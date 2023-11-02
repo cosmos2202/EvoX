@@ -122,13 +122,13 @@ namespace crypto
 
     static const point_t& bpp_H;
     static const point_t& bpp_H2;
-  }; // struct bpp_crypto_trait_zano
+  }; // struct bpp_crypto_trait_evox
 
   template<size_t N, size_t values_max>
-  const point_t& bpp_crypto_trait_zano<N, values_max>::bpp_H = c_point_H;
+  const point_t& bpp_crypto_trait_evox<N, values_max>::bpp_H = c_point_H;
 
   template<size_t N, size_t values_max>
-  const point_t& bpp_crypto_trait_zano<N, values_max>::bpp_H2 = c_point_H2;
+  const point_t& bpp_crypto_trait_evox<N, values_max>::bpp_H2 = c_point_H2;
 
   
   // efficient multiexponentiation (naive stub implementation atm, TODO)
