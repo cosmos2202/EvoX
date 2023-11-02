@@ -13,6 +13,7 @@
 #include <iostream>
 #include <boost/utility/value_init.hpp>
 #include "include_base_utils.h"
+#include "net/levin_client.h"
 using namespace epee;
 
 #include "string_coding.h"
@@ -30,7 +31,19 @@ using namespace epee;
 #include "version.h"
 #include "common/encryption_filter.h"
 #include "crypto/bitcoin/sha256_helper.h"
+
+#define DISABLE_TOR
+
+#ifndef DISABLE_TOR
+  #include "common/tor_helper.h"
+#endif
+
+#include "storages/levin_abstract_invoke2.h"
+
+
 using namespace currency;
+
+
 
 #define MINIMUM_REQUIRED_WALLET_FREE_SPACE_BYTES (100*1024*1024) // 100 MB
 
@@ -53,7 +66,8 @@ namespace tools
                         m_minimum_height(WALLET_MINIMUM_HEIGHT_UNSET_CONST),
                         m_pos_mint_packing_size(WALLET_DEFAULT_POS_MINT_PACKING_SIZE),
                         m_current_wallet_file_size(0),
-                        m_use_deffered_global_outputs(false)
+                        m_use_deffered_global_outputs(false), 
+                        m_disable_tor_relay(false)
   {
     m_core_runtime_config = currency::get_default_core_runtime_config();
   }
@@ -394,8 +408,9 @@ void wallet2::process_new_transaction(const currency::transaction& tx, uint64_t 
       if (it != m_active_htlcs.end())
       {
         transfer_details& td = m_transfers[it->second];
-        WLT_THROW_IF_FALSE_WALLET_INT_ERR_EX(td.m_ptx_wallet_info->m_tx.vout.size() > td.m_internal_output_index, "Internal error: wrong  index in m_transfers");
-        WLT_THROW_IF_FALSE_WALLET_INT_ERR_EX(td.m_ptx_wallet_info->m_tx.vout[td.m_internal_output_index].target.type() == typeid(txout_htlc), "Internal error: wrong  index in m_transfers");
+        WLT_THROW_IF_FALSE_WALLET_INT_ERR_EX(td.m_ptx_wallet_info->m_tx.vout.size() > td.m_internal_output_index, "Internal error: wrong td.m_internal_output_index: " << td.m_internal_output_index);
+        const boost::typeindex::type_info& ti = td.m_ptx_wallet_info->m_tx.vout[td.m_internal_output_index].target.type();
+        WLT_THROW_IF_FALSE_WALLET_INT_ERR_EX(ti == typeid(txout_htlc), "Internal error: wrong type of output's target: " << ti.name());
         //input spend active htlc
         m_transfers[it->second].m_spent_height = height;
         transfer_details_extra_option_htlc_info& tdeohi = get_or_add_field_to_variant_vector<transfer_details_extra_option_htlc_info>(td.varian_options);
@@ -3275,7 +3290,7 @@ void wallet2::wti_to_csv_entry(std::ostream& ss, const wallet_public::wallet_tra
   ss << (wti.is_income ? "in" : "out") << ",";
   ss << (wti.is_service ? "[SERVICE]" : "") << (wti.is_mixing ? "[MIXINS]" : "") << (wti.is_mining ? "[MINING]" : "") << ",";
   ss << wti.tx_type << ",";
-  ss << wti.fee << ENDL;
+  ss << print_money(wti.fee) << ENDL;
 };
 
 void wallet2::wti_to_txt_line(std::ostream& ss, const wallet_public::wallet_transfer_info& wti, size_t index) 
@@ -3316,7 +3331,7 @@ void wallet2::export_transaction_history(std::ostream& ss, const std::string& fo
   else
   {
     //csv by default
-    ss << "N, Date, Amount, Comment, Address, ID, Height, Unlock timestamp, Tx size, Alias, In/Out, Flags, Type, Fee" << ENDL;
+    ss << "N, Date, Amount, Comment, Address, ID, Height, Unlock timestamp, Tx size, Alias, PaymentID, In/Out, Flags, Type, Fee" << ENDL;
   }
 
 
@@ -3326,6 +3341,7 @@ void wallet2::export_transaction_history(std::ostream& ss, const std::string& fo
       if (currency::is_coinbase(wti.tx))
         return true;
     }
+    wti.fee = currency::get_tx_fee(wti.tx);
     cb(ss, wti, index);
     return true;
   });
@@ -3505,6 +3521,7 @@ bool wallet2::try_mint_pos()
 //------------------------------------------------------------------
 bool wallet2::try_mint_pos(const currency::account_public_address& miner_address)
 {
+  TIME_MEASURE_START_MS(mining_duration_ms);
   mining_context ctx = AUTO_VAL_INIT(ctx);
   WLT_LOG_L1("Starting PoS mining iteration");
   fill_mining_context(ctx);
@@ -3534,8 +3551,9 @@ bool wallet2::try_mint_pos(const currency::account_public_address& miner_address
   {
     build_minted_block(ctx.sp, ctx.rsp, miner_address);
   }
+  TIME_MEASURE_FINISH_MS(mining_duration_ms);
 
-  WLT_LOG_L0("PoS mining: " << ctx.rsp.iterations_processed << " iterations finished, status: " << ctx.rsp.status << ", used " << ctx.sp.pos_entries.size() << " entries with total amount: " << print_money_brief(pos_entries_amount));
+  WLT_LOG_L0("PoS mining: " << ctx.rsp.iterations_processed << " iterations finished (" << std::fixed << std::setprecision(2) << (mining_duration_ms / 1000.0f) << "s), status: " << ctx.rsp.status << ", used " << ctx.sp.pos_entries.size() << " entries with total amount: " << print_money_brief(pos_entries_amount));
 
   return true;
 }
@@ -3578,6 +3596,16 @@ bool wallet2::build_minted_block(const currency::COMMAND_RPC_SCAN_POS::request& 
     tmpl_req.pos_index = req.pos_entries[rsp.index].index;
     tmpl_req.extra_text = m_miner_text_info;
     tmpl_req.stake_unlock_time = req.pos_entries[rsp.index].stake_unlock_time;
+
+    // mark stake source as spent and make sure it will be restored in case of error
+    const std::vector<uint64_t> stake_transfer_idx_vec{ req.pos_entries[rsp.index].wallet_index };
+    mark_transfers_as_spent(stake_transfer_idx_vec, "stake source");
+    bool gracefull_leaving = false;
+    auto stake_transfer_spent_flag_restorer = epee::misc_utils::create_scope_leave_handler([&](){
+      if (!gracefull_leaving)
+        clear_transfers_from_flag(stake_transfer_idx_vec, WALLET_TRANSFER_DETAIL_FLAG_SPENT, "stake source");
+      });
+
     //generate packing tx
     transaction pack_tx = AUTO_VAL_INIT(pack_tx);
     if (generate_packing_transaction_if_needed(pack_tx, 0))
@@ -3625,7 +3653,7 @@ bool wallet2::build_minted_block(const currency::COMMAND_RPC_SCAN_POS::request& 
       keys_ptrs);
     WLT_CHECK_AND_ASSERT_MES(res, false, "Failed to prepare_and_sign_pos_block");
     
-    WLT_LOG_GREEN("Block constructed <" << get_block_hash(b) << ">, sending to core...", LOG_LEVEL_0);
+    WLT_LOG_GREEN("Block " << get_block_hash(b) << " @ " << get_block_height(b) << " has been constructed, sending to core...", LOG_LEVEL_0);
 
     currency::COMMAND_RPC_SUBMITBLOCK2::request subm_req = AUTO_VAL_INIT(subm_req);
     currency::COMMAND_RPC_SUBMITBLOCK2::response subm_rsp = AUTO_VAL_INIT(subm_rsp);
@@ -3642,6 +3670,7 @@ bool wallet2::build_minted_block(const currency::COMMAND_RPC_SCAN_POS::request& 
     WLT_LOG_GREEN("POS block generated and accepted, congrats!", LOG_LEVEL_0);
     m_wcallback->on_pos_block_found(b);
 
+    gracefull_leaving = true; // to prevent source transfer flags be cleared in scope leave handler
     return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -4581,22 +4610,76 @@ uint64_t wallet2::get_needed_money(uint64_t fee, const std::vector<currency::tx_
   }
   return needed_money;
 }
-
+//----------------------------------------------------------------------------------------------------------------
+void wallet2::set_disable_tor_relay(bool disable)
+{
+  m_disable_tor_relay = disable;
+}
+//----------------------------------------------------------------------------------------------------------------
+void wallet2::notify_state_change(const std::string& state_code, const std::string& details)
+{
+  m_wcallback->on_tor_status_change(state_code);
+}
 //----------------------------------------------------------------------------------------------------------------
 void wallet2::send_transaction_to_network(const transaction& tx)
 {
-  COMMAND_RPC_SEND_RAW_TX::request req;
-  req.tx_as_hex = epee::string_tools::buff_to_hex_nodelimer(tx_to_blob(tx));
-  COMMAND_RPC_SEND_RAW_TX::response daemon_send_resp;
-  bool r = m_core_proxy->call_COMMAND_RPC_SEND_RAW_TX(req, daemon_send_resp);
-  THROW_IF_TRUE_WALLET_EX(!r, error::no_connection_to_daemon, "sendrawtransaction");
-  THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status == API_RETURN_CODE_BUSY, error::daemon_busy, "sendrawtransaction");
-  THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status == API_RETURN_CODE_DISCONNECTED, error::no_connection_to_daemon, "Transfer attempt while daemon offline");
-  THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status != API_RETURN_CODE_OK, error::tx_rejected, tx, daemon_send_resp.status);
+#ifndef DISABLE_TOR
+  if (!m_disable_tor_relay)
+  {
+    //TODO check that core synchronized
+    //epee::net_utils::levin_client2 p2p_client;
+    
+    //make few attempts
+    tools::levin_over_tor_client p2p_client;
+    p2p_client.get_transport().set_notifier(this);
+    bool succeseful_sent = false;
+    for (size_t i = 0; i != 3; i++)
+    {
+      if (!p2p_client.connect("144.76.183.143", 2121, 10000))
+      {
+        continue;//THROW_IF_FALSE_WALLET_EX(false, error::no_connection_to_daemon, "Failed to connect to TOR node");
+      }
 
-  WLT_LOG_L2("transaction " << get_transaction_hash(tx) << " generated ok and sent to daemon:" << ENDL << currency::obj_to_json_str(tx));
+
+      currency::NOTIFY_OR_INVOKE_NEW_TRANSACTIONS::request p2p_req = AUTO_VAL_INIT(p2p_req);
+      currency::NOTIFY_OR_INVOKE_NEW_TRANSACTIONS::response p2p_rsp = AUTO_VAL_INIT(p2p_rsp);
+      p2p_req.txs.push_back(t_serializable_object_to_blob(tx));
+      this->notify_state_change(WALLET_LIB_STATE_SENDING);
+      epee::net_utils::invoke_remote_command2(NOTIFY_OR_INVOKE_NEW_TRANSACTIONS::ID, p2p_req, p2p_rsp, p2p_client);
+      p2p_client.disconnect();
+      if (p2p_rsp.code == API_RETURN_CODE_OK)
+      {
+        this->notify_state_change(WALLET_LIB_SENT_SUCCESS);
+        succeseful_sent = true;
+        break;
+      }
+      this->notify_state_change(WALLET_LIB_SEND_FAILED);
+      //checking if transaction got relayed to other nodes and 
+      //return;
+    }
+    if (!succeseful_sent)
+    {
+      this->notify_state_change(WALLET_LIB_SEND_FAILED);
+      THROW_IF_FALSE_WALLET_EX(succeseful_sent, error::no_connection_to_daemon, "Faile to build TOR stream");
+    }
+  }
+  else
+#endif //
+  {
+    COMMAND_RPC_SEND_RAW_TX::request req;
+    req.tx_as_hex = epee::string_tools::buff_to_hex_nodelimer(tx_to_blob(tx));
+    COMMAND_RPC_SEND_RAW_TX::response daemon_send_resp;
+    bool r = m_core_proxy->call_COMMAND_RPC_SEND_RAW_TX(req, daemon_send_resp);
+    THROW_IF_TRUE_WALLET_EX(!r, error::no_connection_to_daemon, "sendrawtransaction");
+    THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status == API_RETURN_CODE_BUSY, error::daemon_busy, "sendrawtransaction");
+    THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status == API_RETURN_CODE_DISCONNECTED, error::no_connection_to_daemon, "Transfer attempt while daemon offline");
+    THROW_IF_TRUE_WALLET_EX(daemon_send_resp.status != API_RETURN_CODE_OK, error::tx_rejected, tx, daemon_send_resp.status);
+
+    WLT_LOG_L2("transaction " << get_transaction_hash(tx) << " generated ok and sent to daemon:" << ENDL << currency::obj_to_json_str(tx));
+  }
+
 }
-
+//----------------------------------------------------------------------------------------------------------------
 void wallet2::add_sent_tx_detailed_info(const transaction& tx,
   const std::vector<currency::tx_destination_entry>& destinations,
   const std::vector<uint64_t>& selected_transfers)
@@ -5404,7 +5487,7 @@ void wallet2::transfer(construct_tx_param& ctp,
 
   if (m_watch_only)
   {
-    bool r = store_unsigned_tx_to_file_and_reserve_transfers(ftp, (p_unsigned_filename_or_tx_blob_str != nullptr ? *p_unsigned_filename_or_tx_blob_str : "evox_tx_unsigned"), p_unsigned_filename_or_tx_blob_str);
+    bool r = store_unsigned_tx_to_file_and_reserve_transfers(ftp, (p_unsigned_filename_or_tx_blob_str != nullptr ? *p_unsigned_filename_or_tx_blob_str : "zano_tx_unsigned"), p_unsigned_filename_or_tx_blob_str);
     WLT_THROW_IF_FALSE_WALLET_CMN_ERR_EX(r, "failed to store unsigned tx");
     WLT_LOG_GREEN("[wallet::transfer]" << " prepare_transaction_time: " << print_fixed_decimal_point(prepare_transaction_time, 3), LOG_LEVEL_0);
     return;

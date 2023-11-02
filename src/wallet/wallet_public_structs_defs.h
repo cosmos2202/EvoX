@@ -324,6 +324,7 @@ namespace wallet_public
     typedef wallet_public::mining_history response;
   };
 
+
 #define ORDER_FROM_BEGIN_TO_END        "FROM_BEGIN_TO_END"
 #define ORDER_FROM_FROM_END_TO_BEGIN   "FROM_END_TO_BEGIN"
 

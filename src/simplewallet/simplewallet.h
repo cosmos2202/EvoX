@@ -59,7 +59,6 @@ namespace currency
     bool dump_trunsfers(const std::vector<std::string>& args);
     bool dump_key_images(const std::vector<std::string>& args);
     bool show_incoming_transfers(const std::vector<std::string> &args);
-    bool show_staking_history(const std::vector<std::string>& args);
     bool show_incoming_transfers_counts(const std::vector<std::string> &args);
     bool list_outputs(const std::vector<std::string> &args);
     bool show_payments(const std::vector<std::string> &args);
@@ -87,6 +86,8 @@ namespace currency
     bool sign_transfer(const std::vector<std::string> &args);
     bool submit_transfer(const std::vector<std::string> &args);
     bool sweep_below(const std::vector<std::string> &args);
+    bool tor_enable(const std::vector<std::string> &args);
+    bool tor_disable(const std::vector<std::string> &args);
     bool validate_wrap_status(uint64_t amount);
 
     bool get_alias_from_daemon(const std::string& alias_name, currency::extra_alias_entry_base& ai);
@@ -99,6 +100,7 @@ namespace currency
     virtual void on_new_block(uint64_t height, const currency::block& block) override;
     virtual void on_transfer2(const tools::wallet_public::wallet_transfer_info& wti, uint64_t balance, uint64_t unlocked_balance, uint64_t total_mined) override;
     virtual void on_message(i_wallet2_callback::message_severity severity, const std::string& m) override;
+    virtual void on_tor_status_change(const std::string& state) override;
 
     //----------------------------------------------------------
 
@@ -167,6 +169,7 @@ namespace currency
     bool m_do_not_set_date;
     bool m_do_pos_mining;
     bool m_offline_mode;
+    bool m_disable_tor;
     std::string m_restore_wallet;
 
     epee::console_handlers_binder m_cmd_binder;
