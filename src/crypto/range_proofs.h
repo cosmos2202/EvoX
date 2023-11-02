@@ -4,11 +4,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #pragma once
 
-//
-// This file contains the implementation of range proof protocol.
-// Namely, Bulletproofs+ https://eprint.iacr.org/2020/735.pdf
-//
-
 #include "epee/include/misc_log_ex.h"
 #include "crypto-sugar.h"
 
