@@ -323,6 +323,8 @@ namespace nodetool
     ADD_HARDCODED_SEED_NODE("140.238.211.81", P2P_DEFAULT_PORT);    // oracle-ARM-4 - Zurich
     ADD_HARDCODED_SEED_NODE("49.234.122.53", P2P_DEFAULT_PORT);     // Jason - China
     ADD_HARDCODED_SEED_NODE("45.132.244.63", P2P_DEFAULT_PORT);     // SG-Doge - ......
+    ADD_HARDCODED_SEED_NODE("109.96.9.25", P2P_DEFAULT_PORT);       // artfix
+    ADD_HARDCODED_SEED_NODE("194.33.87.233", P2P_DEFAULT_PORT);     // cosmos
 #else
     //TODO:
     ADD_HARDCODED_SEED_NODE("62.171.142.111", P2P_DEFAULT_PORT);    // node1 - Germany
@@ -336,6 +338,8 @@ namespace nodetool
     ADD_HARDCODED_SEED_NODE("140.238.211.81", P2P_DEFAULT_PORT);    // oracle-ARM-4 - Zurich
     ADD_HARDCODED_SEED_NODE("49.234.122.53", P2P_DEFAULT_PORT);     // Jason - China
     ADD_HARDCODED_SEED_NODE("45.132.244.63", P2P_DEFAULT_PORT);     // SG-Doge - ......
+    ADD_HARDCODED_SEED_NODE("109.96.9.25", P2P_DEFAULT_PORT);       // artfix
+    ADD_HARDCODED_SEED_NODE("194.33.87.233", P2P_DEFAULT_PORT);     // cosmos
 #endif
 
     bool res = handle_command_line(vm);
