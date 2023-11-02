@@ -23,7 +23,7 @@ struct genesis_tx_dictionary_entry {
 #pragma pack(pop)
 
 #ifndef TESTNET
-extern const genesis_tx_dictionary_entry ggenesis_dict[2];
+extern const genesis_tx_dictionary_entry ggenesis_dict[5];
 #else
 extern const genesis_tx_dictionary_entry ggenesis_dict[5];
 #endif
