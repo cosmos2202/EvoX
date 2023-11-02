@@ -19,8 +19,8 @@ namespace currency
 #else
   struct genesis_tx_raw_data 
   {
-    uint64_t const v[42];
-    uint8_t const r[2];
+    uint64_t const v[22];
+    uint8_t const r[5];
   };
 #endif
 #pragma pack(pop)
