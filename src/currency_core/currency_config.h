@@ -99,9 +99,9 @@
 
 
 #ifndef TESTNET
-#define P2P_DEFAULT_PORT                                52600//52530  
-#define RPC_DEFAULT_PORT                                52531//52531 
-#define STRATUM_DEFAULT_PORT                            52700//52525
+#define P2P_DEFAULT_PORT                                52520
+#define RPC_DEFAULT_PORT                                52521
+#define STRATUM_DEFAULT_PORT                            52525
 #define P2P_NETWORK_ID_TESTNET_FLAG                     0
 #define P2P_MAINTAINERS_PUB_KEY                         "8f138bb73f6d663a3746a542770781a09579a7b84cb4125249e95530824ee608" //changed last
 #else 
