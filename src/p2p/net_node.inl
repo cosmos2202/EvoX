@@ -312,7 +312,7 @@ namespace nodetool
 #ifndef TESTNET
     //TODO:
     //ADD_HARDCODED_SEED_NODE(std::string("0.0.0.0:") + std::to_string(P2P_DEFAULT_PORT));
-    ADD_HARDCODED_SEED_NODE("62.171.142.111", P2P_DEFAULT_PORT);    // node1 - Germany
+    /*ADD_HARDCODED_SEED_NODE("62.171.142.111", P2P_DEFAULT_PORT);    // node1 - Germany
     ADD_HARDCODED_SEED_NODE("130.162.220.200", P2P_DEFAULT_PORT);   // oracle-1 - Frankfurt
     ADD_HARDCODED_SEED_NODE("141.144.237.74", P2P_DEFAULT_PORT);    // oracle-2 - Frankfurt
     ADD_HARDCODED_SEED_NODE("140.238.212.96", P2P_DEFAULT_PORT);    // oracle-3 - Zurich
@@ -322,7 +322,9 @@ namespace nodetool
     ADD_HARDCODED_SEED_NODE("140.238.217.6", P2P_DEFAULT_PORT);     // oracle-ARM-3 - Zurich
     ADD_HARDCODED_SEED_NODE("140.238.211.81", P2P_DEFAULT_PORT);    // oracle-ARM-4 - Zurich
     ADD_HARDCODED_SEED_NODE("49.234.122.53", P2P_DEFAULT_PORT);     // Jason - China
-    ADD_HARDCODED_SEED_NODE("45.132.244.63", P2P_DEFAULT_PORT);     // SG-Doge - ......
+    ADD_HARDCODED_SEED_NODE("45.132.244.63", P2P_DEFAULT_PORT);*/     // SG-Doge - ......
+    ADD_HARDCODED_SEED_NODE("109.96.9.25", P2P_DEFAULT_PORT);        // artfix
+    ADD_HARDCODED_SEED_NODE("194.33.87.233", P2P_DEFAULT_PORT);
 #else
     //TODO:
     /*ADD_HARDCODED_SEED_NODE("62.171.142.111", P2P_DEFAULT_PORT);    // node1 - Germany
